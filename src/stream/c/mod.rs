@@ -4,7 +4,6 @@ use std::{
     ptr::{null, null_mut},
     str::FromStr,
     sync::{Arc, LazyLock, Mutex},
-    thread::spawn,
     time::Duration,
 };
 
@@ -119,6 +118,7 @@ impl MoonlightInstance {
 pub struct MoonlightStream {
     server_version: ServerVersion,
     handle: Arc<Handle>,
+    stopped: bool,
 }
 
 fn to_c_char_array(bytes: [u8; 16]) -> [c_char; 16] {
@@ -148,7 +148,11 @@ impl MoonlightStream {
 
             drop(connection_guard);
 
-            let server_version = stream_config.version;
+            let this = Self {
+                server_version: stream_config.version,
+                handle,
+                stopped: false,
+            };
 
             let address = CString::from_str(&stream_config.address)?;
             let app_version = stream_config.version.to_string();
@@ -190,12 +194,6 @@ impl MoonlightStream {
                     iv[0..4].copy_from_slice(&stream_config.encryption.aes_iv.to_be_bytes());
                     iv
                 }),
-            };
-
-            // If something panics this will be dropped -> connection_guard is false again
-            let this = Self {
-                handle,
-                server_version,
             };
 
             connection::set_global(connection_listener, connection_listener_c);
@@ -745,39 +743,59 @@ impl MoonlightStream {
     /// Will stop the stream.
     ///
     /// This will block until the stream is fully stopped.
-    pub fn stop(self) {
-        unsafe {
-            // # Safety
-            // LiStopConnection is not thread safe so we need a mutex
-            let mut connection_guard = self
-                .handle
-                .connection_exists
-                .lock()
-                .expect("connection lock poisoned");
+    pub fn stop(mut self) {
+        self.stop_inner();
+    }
 
-            LiStopConnection();
-
-            // Clear Connection Callbacks
-            connection::clear_global();
-            video::clear_global();
-            audio::clear_global();
-
-            *connection_guard = false;
-
-            drop(connection_guard);
+    fn stop_inner(&mut self) {
+        if self.stopped {
+            return;
         }
+        self.stopped = true;
+        let mut connection_guard = self
+            .handle
+            .connection_exists
+            .lock()
+            .expect("connection lock poisoned");
+        // The claim remains held until native workers and their callbacks are retired.
+        unsafe {
+            LiStopConnection();
+        }
+        connection::clear_global();
+        video::clear_global();
+        audio::clear_global();
+        *connection_guard = false;
     }
 }
 
 impl Drop for MoonlightStream {
     fn drop(&mut self) {
-        let this = MoonlightStream {
-            server_version: self.server_version,
-            handle: self.handle.clone(),
-        };
+        self.stop_inner();
+    }
+}
 
-        spawn(move || {
-            this.stop();
-        });
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_stop_and_drop_release_the_claim_without_detached_owners() {
+        for explicit in [false, true] {
+            let handle = Arc::new(Handle {
+                connection_exists: Mutex::new(true),
+            });
+            let stream = MoonlightStream {
+                server_version: ServerVersion::new(7, 1, 431, 0),
+                handle: Arc::clone(&handle),
+                stopped: false,
+            };
+            if explicit {
+                stream.stop();
+            } else {
+                drop(stream);
+            }
+            assert!(!*handle.connection_exists.lock().unwrap());
+            assert_eq!(Arc::strong_count(&handle), 1);
+        }
     }
 }
