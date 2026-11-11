@@ -1,3 +1,5 @@
+> enzUI fork: see [FORK.md](FORK.md) for the downstream changes.
+
 # moonlight-common-rust
 
 `moonlight-common-rust` is a Rust implementation of the Moonlight game streaming protocol built around a Sans-IO architecture.

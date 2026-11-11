@@ -1,6 +1,7 @@
 [workspace]
 package.version = "0.1.0"
 package.license = "GPL-3.0-or-later"
+package.repository = "https://github.com/enz1m/enzim-moonlight-common-rust"
 members = ["./", "bindings", "bindings/uniffi-bindgen", "moonlight-common-sys"]
 
 [workspace.dependencies]
@@ -24,6 +25,7 @@ name = "moonlight-common"
 edition = "2024"
 version.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
 bitflags = "2.9.1"
