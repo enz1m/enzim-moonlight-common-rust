@@ -4,10 +4,8 @@ use std::{
     sync::Mutex,
 };
 
-use moonlight_common_sys::{
-    LogMessageCallback,
-    limelight::{_CONNECTION_LISTENER_CALLBACKS, LiGetHdrMetadata, SS_HDR_METADATA},
-    log_message_wrapper,
+use moonlight_common_sys::limelight::{
+    _CONNECTION_LISTENER_CALLBACKS, LiGetHdrMetadata, SS_HDR_METADATA,
 };
 use num::FromPrimitive;
 
@@ -86,16 +84,6 @@ unsafe extern "C" fn connection_status_update(status: c_int) {
             ConnectionStatus::from_i32(status).expect("valid connection status"),
         );
     });
-}
-
-struct LogMessage;
-
-impl LogMessageCallback for LogMessage {
-    fn log_message(text: String) {
-        global_listener(|(_, listener)| {
-            listener.log_message(&text);
-        });
-    }
 }
 
 unsafe extern "C" fn set_hdr_mode(enabled: bool) {
@@ -211,7 +199,7 @@ pub(crate) unsafe fn raw_callbacks() -> _CONNECTION_LISTENER_CALLBACKS {
         stageFailed: Some(stage_failed),
         connectionStarted: Some(connection_started),
         connectionTerminated: Some(connection_terminated),
-        logMessage: Some(log_message_wrapper::<LogMessage>),
+        logMessage: None,
         rumble: Some(controller_rumble),
         connectionStatusUpdate: Some(connection_status_update),
         setHdrMode: Some(set_hdr_mode),
